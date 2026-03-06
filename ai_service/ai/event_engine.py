@@ -40,6 +40,9 @@ def detect_events(track_id, center, polygon, timestamp):
 
     track_history[track_id].append(center)
 
+    if len(track_history[track_id]) > 50:
+        track_history[track_id].pop(0)
+
     if len(track_history[track_id]) > 10:
 
         speed = calculate_speed(

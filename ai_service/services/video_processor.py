@@ -34,10 +34,10 @@ async def process_video(video, zone_coords):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
     output_filename = f"annotated_{int(time.time())}_{video.filename}"
-
     output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    # fix video speed (because we process frames differently)
+    out = cv2.VideoWriter(output_path, fourcc, fps/3, (width, height))
 
     frame_count = 0
     events = []
@@ -51,8 +51,8 @@ async def process_video(video, zone_coords):
 
         frame_count += 1
 
-        if frame_count % 3 != 0:
-            continue
+        # Draw zone once per frame
+        cv2.polylines(frame, [zone_polygon], True, (0, 0, 255), 2)
 
         detections = detect_people(frame)
 
@@ -72,20 +72,6 @@ async def process_video(video, zone_coords):
 
             center = (center_x, center_y)
 
-            cv2.rectangle(frame, (l, t), (l+w, t+h), (0,255,0), 2)
-
-            cv2.putText(
-                frame,
-                f"ID {track_id}",
-                (l, t-10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0,255,0),
-                2
-            )
-
-            cv2.polylines(frame, [zone_polygon], True, (0,0,255), 2)
-
             timestamp = frame_count / fps
 
             detected_events = detect_events(
@@ -97,6 +83,39 @@ async def process_video(video, zone_coords):
 
             events.extend(detected_events)
 
+            # Default color and label
+            color = (0, 255, 0)
+            label = f"ID {track_id}"
+
+            # Change color based on detected event
+            for event in detected_events:
+
+                if event["event_type"] == "restricted_area_entry":
+                    color = (0, 0, 255)
+                    label = "RESTRICTED AREA"
+
+                elif event["event_type"] == "sudden_running":
+                    color = (0, 165, 255)
+                    label = "RUNNING"
+
+                elif event["event_type"] == "loitering":
+                    color = (255, 0, 0)
+                    label = "LOITERING"
+
+            # Draw bounding box
+            cv2.rectangle(frame, (l, t), (l + w, t + h), color, 2)
+
+            # Draw label
+            cv2.putText(
+                frame,
+                label,
+                (l, t - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2
+            )
+
         out.write(frame)
 
     cap.release()
@@ -104,8 +123,10 @@ async def process_video(video, zone_coords):
 
     os.remove(video_path)
 
+    video_url = f"http://127.0.0.1:8000/videos/{output_filename}"
+
     return {
         "status": "done",
         "events": events,
-        "annotated_video": output_filename
+        "annotated_video_url": video_url
     }
